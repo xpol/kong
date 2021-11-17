@@ -1,9 +1,19 @@
 --- A schema for validating schemas
 -- @module kong.db.schema.metaschema
 
-local Schema = require("kong.db.schema")
+local Schema = require "kong.db.schema"
 
-local tablex = require("pl.tablex")
+
+local setmetatable = setmetatable
+local assert = assert
+local insert = table.insert
+local pairs = pairs
+local find = string.find
+local type = type
+local next = next
+local keys = require("pl.tablex").keys
+local sub = string.sub
+local fmt = string.format
 
 
 local match_list = {
@@ -56,9 +66,10 @@ local validators = {
   { mutually_exclusive_subsets = { type = "array", elements = { type = "array", elements = { type = "string" } } } },
 }
 
+
 -- Other field attributes, that do not correspond to validators
 local field_schema = {
-  { type = { type = "string", one_of = tablex.keys(Schema.valid_types), required = true }, },
+  { type = { type = "string", one_of = keys(Schema.valid_types), required = true }, },
   { required = { type = "boolean" }, },
   { reference = { type = "string" }, },
   { auto = { type = "boolean" }, },
@@ -74,15 +85,19 @@ local field_schema = {
   { encrypted = { type = "boolean" }, },
 }
 
-for _, field in ipairs(validators) do
-  table.insert(field_schema, field)
+
+for i = 1, #validators do
+  insert(field_schema, validators[i])
 end
 
+
 -- Most of the above are optional
-for _, field in ipairs(field_schema) do
+for i = 1, #field_schema do
+  local field = field_schema[i]
   local data = field[next(field)]
   data.nilable = not data.required
 end
+
 
 local field_entity_checks = {
   -- if 'unique_across_ws' is set, then 'unique' must be set too
@@ -93,6 +108,7 @@ local field_entity_checks = {
     }
   },
 }
+
 
 local fields_array = {
   type = "array",
@@ -154,11 +170,13 @@ local transformations_array = {
   },
 }
 
+
 -- Recursive field attributes
-table.insert(field_schema, { elements = { type = "record", fields = field_schema } })
-table.insert(field_schema, { keys     = { type = "record", fields = field_schema } })
-table.insert(field_schema, { values   = { type = "record", fields = field_schema } })
-table.insert(field_schema, { fields   = fields_array })
+insert(field_schema, { elements = { type = "record", fields = field_schema } })
+insert(field_schema, { keys     = { type = "record", fields = field_schema } })
+insert(field_schema, { values   = { type = "record", fields = field_schema } })
+insert(field_schema, { fields   = fields_array })
+
 
 local conditional_validators = {
   { required = { type = "boolean" } },
@@ -166,9 +184,10 @@ local conditional_validators = {
   { keys     = { type = "record", fields = field_schema } },
   { values   = { type = "record", fields = field_schema } },
 }
-for _, field in ipairs(validators) do
-  table.insert(conditional_validators, field)
+for i = 1, #validators do
+  insert(conditional_validators, validators[i])
 end
+
 
 local entity_checkers = {
   { at_least_one_of = { type = "array", elements = { type = "string" } } },
@@ -218,13 +237,17 @@ local entity_checkers = {
   },
 }
 
+
 local entity_check_names = {}
 
-for _, field in ipairs(entity_checkers) do
+
+for i = 1, #entity_checkers do
+  local field = entity_checkers[i]
   local name = next(field)
   --field[name].nilable = true
-  table.insert(entity_check_names, name)
+  insert(entity_check_names, name)
 end
+
 
 local entity_checks_schema = {
   type = "array",
@@ -232,11 +255,12 @@ local entity_checks_schema = {
     type = "record",
     fields = entity_checkers,
     entity_checks = {
-      { only_one_of = tablex.keys(Schema.entity_checkers) }
+      { only_one_of = keys(Schema.entity_checkers) }
     }
   },
   nilable = true,
 }
+
 
 local shorthands_array = {
   type = "array",
@@ -250,6 +274,7 @@ local shorthands_array = {
   nilable = true,
 }
 
+
 local shorthand_fields_array = {
   type = "array",
   elements = {
@@ -262,9 +287,11 @@ local shorthand_fields_array = {
   nilable = true,
 }
 
-table.insert(field_schema, { entity_checks = entity_checks_schema })
-table.insert(field_schema, { shorthands = shorthands_array })
-table.insert(field_schema, { shorthand_fields = shorthand_fields_array })
+
+insert(field_schema, { entity_checks = entity_checks_schema })
+insert(field_schema, { shorthands = shorthands_array })
+insert(field_schema, { shorthand_fields = shorthand_fields_array })
+
 
 local meta_errors = {
   ATTRIBUTE = "field of type '%s' cannot have attribute '%s'",
@@ -358,10 +385,14 @@ local nested_attributes = {
   ["values" ] = true,
 }
 
+
 local check_field
 
+
 local check_fields = function(schema, errors)
-  for _, item in ipairs(schema.fields) do
+  local fields = schema.fields
+  for i = 1, #fields do
+    local item = fields[i]
     if type(item) ~= "table" then
       errors["fields"] = meta_errors.FIELDS_ARRAY
       break
@@ -384,6 +415,7 @@ local check_fields = function(schema, errors)
   return true
 end
 
+
 check_field = function(k, field, errors)
   if not field.type then
     errors[k] = meta_errors.TYPE
@@ -394,7 +426,8 @@ check_field = function(k, field, errors)
     if field.abstract and field.type == "record" then
       req_attrs = {}
     end
-    for _, required in ipairs(req_attrs) do
+    for i = 1, #req_attrs do
+      local required = req_attrs[i]
       if not field[required] then
         errors[k] = meta_errors.REQUIRED:format(field.type, required)
       end
@@ -425,10 +458,12 @@ local function has_schema_field(schema, name)
     return false
   end
 
-  local dot = string.find(name, ".", 1, true)
+  local fields = schema.fields
+
+  local dot = find(name, ".", 1, true)
   if not dot then
-    for _, field in ipairs(schema.fields) do
-      local k = next(field)
+    for i = 1, #fields do
+      local k = next(fields[i])
       if k == name then
         return true
       end
@@ -437,8 +472,9 @@ local function has_schema_field(schema, name)
     return false
   end
 
-  local hd, tl = string.sub(name, 1, dot - 1), string.sub(name, dot + 1)
-  for _, field in ipairs(schema.fields) do
+  local hd, tl = sub(name, 1, dot - 1), sub(name, dot + 1)
+  for i = 1, #fields do
+    local field = fields[i]
     local k = next(field)
     if k == hd then
       if field[hd] and field[hd].type == "foreign" then
@@ -475,14 +511,14 @@ local function make_shorthand_field_schema()
   local shorthand_field_types = {}
   for k, _ in pairs(Schema.valid_types) do
     if not invalid_as_shorthand[k] then
-      table.insert(shorthand_field_types, k)
+      insert(shorthand_field_types, k)
     end
   end
 
   assert(next(shorthand_field_schema[1]) == "type")
   shorthand_field_schema[1] = { type = { type = "string", one_of = shorthand_field_types, required = true }, }
 
-  table.insert(shorthand_field_schema, { func = { type = "function", required = true } })
+  insert(shorthand_field_schema, { func = { type = "function", required = true } })
   return shorthand_field_schema
 end
 
@@ -495,9 +531,7 @@ shorthand_fields_array.elements.values = {
 
 
 local MetaSchema = Schema.new({
-
   name = "metaschema",
-
   fields = {
     {
       name = {
@@ -618,16 +652,17 @@ local MetaSchema = Schema.new({
 
   check = function(schema)
     local errors = {}
+    local fields = schema.fields
 
-    if not schema.fields then
+    if not fields then
       errors["fields"] = meta_errors.TABLE:format("fields")
       return nil, errors
     end
 
     if schema.endpoint_key then
       local found = false
-      for _, item in ipairs(schema.fields) do
-        local k = next(item)
+      for i = 1, #fields do
+        local k = next(fields[i])
         if schema.endpoint_key == k then
           found = true
           break
@@ -638,13 +673,15 @@ local MetaSchema = Schema.new({
       end
     end
 
-    if schema.cache_key then
+    local cache_key = schema.cache_key
+    if cache_key then
       local found
-      for _, e in ipairs(schema.cache_key) do
+      for i = 1, #cache_key do
         found = nil
-        for _, item in ipairs(schema.fields) do
+        for j = 1, #fields do
+          local item = fields[j]
           local k = next(item)
-          if e == k then
+          if cache_key[i] == k then
             found = item[k]
             break
           end
@@ -654,7 +691,8 @@ local MetaSchema = Schema.new({
           break
         end
       end
-      if #schema.cache_key == 1 then
+
+      if #cache_key == 1 then
         if found and not found.unique then
           errors["cache_key"] = meta_errors.CACHE_KEY_UNIQUE
         end
@@ -663,7 +701,8 @@ local MetaSchema = Schema.new({
 
     if schema.subschema_key then
       local found = false
-      for _, item in ipairs(schema.fields) do
+      for i = 1, #fields do
+        local item = fields[i]
         local k = next(item)
         local field = item[k]
         if schema.subschema_key == k then
@@ -680,8 +719,8 @@ local MetaSchema = Schema.new({
     end
 
     if schema.ttl then
-      for _, item in ipairs(schema.fields) do
-        local k = next(item)
+      for i = 1, #fields do
+        local k = next(fields[i])
         if k == "ttl" then
           errors["ttl"] = meta_errors.TTL_RESERVED
           break
@@ -689,10 +728,12 @@ local MetaSchema = Schema.new({
       end
     end
 
-    if schema.transformations then
-      for i, transformation in ipairs(schema.transformations) do
-        for j, input in ipairs(transformation.input) do
-          if not has_schema_field(schema, input) then
+    local transformations = schema.transformations
+    if transformations then
+      for i = 1, #transformations do
+        local input = transformations[i].input
+        for j = 1, #input do
+          if not has_schema_field(schema, input[j]) then
             if not errors.transformations then
               errors.transformations = {}
             end
@@ -706,13 +747,14 @@ local MetaSchema = Schema.new({
               errors.transformations.input[i] = {}
             end
 
-            errors.transformations.input[i][j] = string.format("invalid field name: %s", input)
+            errors.transformations.input[i][j] = fmt("invalid field name: %s", input)
           end
         end
 
-        if transformation.needs then
-          for j, need in ipairs(transformation.needs) do
-            if not has_schema_field(schema, need) then
+        local needs = transformations[i].needs
+        if needs then
+          for j = 1, #needs do
+            if not has_schema_field(schema, needs[j]) then
               if not errors.transformations then
                 errors.transformations = {}
               end
@@ -726,7 +768,7 @@ local MetaSchema = Schema.new({
                 errors.transformations.needs[i] = {}
               end
 
-              errors.transformations.needs[i][j] = string.format("invalid field name: %s", need)
+              errors.transformations.needs[i][j] = fmt("invalid field name: %s", needs[j])
             end
           end
         end
@@ -735,7 +777,6 @@ local MetaSchema = Schema.new({
 
     return check_fields(schema, errors)
   end,
-
 })
 
 
@@ -750,8 +791,8 @@ MetaSchema.valid_types = setmetatable({
 -- @return a set of validator names.
 function MetaSchema.get_supported_validator_set()
   local set = {}
-  for _, item in ipairs(validators) do
-    local name = next(item)
+  for i = 1, #validators do
+    local name = next(validators[i])
     set[name] = true
   end
   return set
@@ -759,9 +800,7 @@ end
 
 
 MetaSchema.MetaSubSchema = Schema.new({
-
   name = "metasubschema",
-
   fields = {
     {
       name = {
@@ -785,7 +824,6 @@ MetaSchema.MetaSubSchema = Schema.new({
       },
     },
   },
-
   check = function(schema)
     local errors = {}
 
@@ -796,7 +834,7 @@ MetaSchema.MetaSubSchema = Schema.new({
 
     return check_fields(schema, errors)
   end,
-
 })
+
 
 return MetaSchema
