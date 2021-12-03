@@ -6,7 +6,7 @@ local jwt_decoder = require "kong.plugins.jwt.jwt_parser"
 
 local ipairs         = ipairs
 local string_format  = string.format
-local ngx_re_gmatch  = ngx.re.gmatch
+local ngx_re_match  = ngx.re.match
 local ngx_set_header = ngx.req.set_header
 local get_method     = ngx.req.get_method
 
@@ -41,19 +41,8 @@ local function retrieve_token(request, conf)
 
   local authorization_header = request.get_headers()["authorization"]
   if authorization_header then
-    local iterator, iter_err = ngx_re_gmatch(authorization_header, "\\s*[Bb]earer\\s+(.+)")
-    if not iterator then
-      return nil, iter_err
-    end
-
-    local m, err = iterator()
-    if err then
-      return nil, err
-    end
-
-    if m and #m > 0 then
-      return m[1]
-    end
+    local m, err = ngx_re_match(authorization_header, [[\s*Bearer\s+(.+)]], "io")
+    return (m and m[1]) or authorization_header
   end
 end
 
