@@ -92,7 +92,11 @@ local function do_authentication(conf)
   local ttype = type(token)
   if ttype ~= "string" then
     if ttype == "nil" then
-      return false, {status = 401}
+      if conf.allow_no_token then
+        return true
+      else
+        return false, {status = 401}
+      end
     elseif ttype == "table" then
       return false, {status = 401, message = "Multiple tokens provided"}
     else
