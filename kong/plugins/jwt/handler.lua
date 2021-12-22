@@ -112,7 +112,7 @@ local function do_authentication(conf)
 
   local claims = jwt.claims
 
-  local jwt_secret_key = claims[conf.key_claim_name]
+  local jwt_secret_key = claims[conf.key_claim_name] or (conf.default_secret_key ~= "" and conf.default_secret_key or nil)
   if not jwt_secret_key then
     return false, {status = 401, message = "No mandatory '" .. conf.key_claim_name .. "' in claims"}
   end

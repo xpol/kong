@@ -19,5 +19,6 @@ return {
     anonymous = {type = "string", default = "", func = check_user},
     run_on_preflight = {type = "boolean", default = true},
     allow_no_token = {type = "boolean", default = false},
+    default_secret_key = {type = "string", default = ""},
   },
 }
